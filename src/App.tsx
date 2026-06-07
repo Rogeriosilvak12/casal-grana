@@ -253,7 +253,11 @@ export default function CasalGrana() {
   const [filterMonth, setFilterMonth] = useState(currentMonth());
   const [viewMode, setViewMode] = useState('juntos');
   const [depositGoal, setDepositGoal] = useState(null);
+  const [customCategories, setCustomCategories] = useState([]);
   const printRef = useRef(null);
+
+  const allCategories = [...CATEGORIES, ...customCategories];
+  const addCustomCategory = (cat) => setCustomCategories((prev) => [...prev, cat]);
 
   const unread = notifs.filter((n) => !n.read).length;
 
@@ -281,7 +285,7 @@ export default function CasalGrana() {
       .reduce((s, e) => s + e.amount, 0),
   }));
 
-  const byCat = CATEGORIES.map((c) => ({
+  const byCat = allCategories.map((c) => ({
     ...c,
     total: expenses
       .filter((e) => inMonth(e) && e.category === c.id)
@@ -615,11 +619,13 @@ export default function CasalGrana() {
       {modal === 'expense' && (
         <ExpenseModal
           members={members}
+          categories={allCategories}
           onSave={(d) => {
             addExpense(d);
             setModal(null);
           }}
           onClose={() => setModal(null)}
+          onAddCategory={addCustomCategory}
         />
       )}
       {modal === 'income' && (
@@ -1717,7 +1723,7 @@ function Notificacoes({ notifs, unread, onMarkAll, onMarkOne }) {
   );
 }
 
-function ExpenseModal({ members, onSave, onClose }) {
+function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
   const [form, setForm] = useState({
     person_id: members[0]?.id,
     description: '',
@@ -1725,11 +1731,27 @@ function ExpenseModal({ members, onSave, onClose }) {
     category: 'alimentacao',
     date: todayStr(),
   });
+  const [showNewCat, setShowNewCat] = useState(false);
+  const [newCat, setNewCat] = useState({ label: '', emoji: '🏷️' });
+  const EMOJI_OPTIONS = ['🏷️','🛍️','🎮','🐶','🏥','✈️','🎁','🏋️','🍕','☕','🏠','💡','📱','🎓','💄','🔧','🌿','🐱','🎵','🚀'];
+
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
+
   const handleSave = () => {
     if (!form.description || !form.amount) return;
     onSave({ ...form, amount: parseFloat(form.amount) });
   };
+
+  const handleAddCategory = () => {
+    if (!newCat.label.trim()) return;
+    const id = newCat.label.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+    const cat = { id, label: newCat.label.trim(), emoji: newCat.emoji, color: '#8A9E94' };
+    onAddCategory(cat);
+    set('category', id);
+    setShowNewCat(false);
+    setNewCat({ label: '', emoji: '🏷️' });
+  };
+
   return (
     <div
       className="overlay"
@@ -1781,12 +1803,46 @@ function ExpenseModal({ members, onSave, onClose }) {
           </div>
         </div>
         <div className="form-group">
-          <label>Categoria</label>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <label style={{ margin: 0 }}>Categoria</label>
+            <button
+              className="btn btn-ghost btn-sm"
+              onClick={() => setShowNewCat(!showNewCat)}
+              style={{ fontSize: 11, padding: '4px 10px' }}
+            >
+              {showNewCat ? '✕ Cancelar' : '＋ Nova categoria'}
+            </button>
+          </div>
+          {showNewCat ? (
+            <div style={{ background: 'var(--cream-dark)', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+              <div style={{ marginBottom: 8 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-mid)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Ícone</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                  {EMOJI_OPTIONS.map((e) => (
+                    <button key={e} onClick={() => setNewCat(p => ({ ...p, emoji: e }))}
+                      style={{ padding: '4px 6px', fontSize: 16, background: newCat.emoji === e ? 'var(--green-pale)' : 'var(--white)', border: newCat.emoji === e ? '2px solid var(--green-light)' : '1.5px solid var(--border)', borderRadius: 8, cursor: 'pointer' }}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Nome da categoria"
+                  value={newCat.label}
+                  onChange={(e) => setNewCat(p => ({ ...p, label: e.target.value }))}
+                  style={{ flex: 1, padding: '8px 12px', border: '1.5px solid var(--border)', borderRadius: 8, fontSize: 14, fontFamily: "'DM Sans', sans-serif", background: 'var(--white)', outline: 'none' }}
+                />
+                <button className="btn btn-primary btn-sm" onClick={handleAddCategory}>Criar</button>
+              </div>
+            </div>
+          ) : null}
           <select
             value={form.category}
             onChange={(e) => set('category', e.target.value)}
           >
-            {CATEGORIES.map((c) => (
+            {categories.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.emoji} {c.label}
               </option>
