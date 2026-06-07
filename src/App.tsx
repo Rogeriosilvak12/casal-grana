@@ -1,10 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY
-);
+import { useState, useRef } from 'react';
 
 const STYLE = `
   @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
@@ -248,10 +242,10 @@ const makeNotifs = () => [];
 
 export default function CasalGrana() {
   const [page, setPage] = useState('dashboard');
-  const [expenses, setExpenses] = useState([]);
-  const [incomes, setIncomes] = useState([]);
-  const [goals, setGoals] = useState([]);
-  const [notifs, setNotifs] = useState([]);
+  const [expenses, setExpenses] = useState(makeExpenses);
+  const [incomes, setIncomes] = useState(makeIncomes);
+  const [goals, setGoals] = useState(makeGoals);
+  const [notifs, setNotifs] = useState(makeNotifs);
   const [members] = useState(DEMO_MEMBERS);
   const [modal, setModal] = useState(null);
   const [filterPerson, setFilterPerson] = useState('todos');
@@ -260,48 +254,10 @@ export default function CasalGrana() {
   const [viewMode, setViewMode] = useState('juntos');
   const [depositGoal, setDepositGoal] = useState(null);
   const [customCategories, setCustomCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
   const printRef = useRef(null);
 
   const allCategories = [...CATEGORIES, ...customCategories];
   const addCustomCategory = (cat) => setCustomCategories((prev) => [...prev, cat]);
-
-  // Load data from Supabase
-  useEffect(() => {
-    loadData();
-    // Realtime subscriptions
-    const expSub = supabase.channel('expenses').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => loadExpenses()).subscribe();
-    const incSub = supabase.channel('incomes').on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, () => loadIncomes()).subscribe();
-    const goalSub = supabase.channel('goals').on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, () => loadGoals()).subscribe();
-    const notifSub = supabase.channel('notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => loadNotifs()).subscribe();
-    return () => { expSub.unsubscribe(); incSub.unsubscribe(); goalSub.unsubscribe(); notifSub.unsubscribe(); };
-  }, []);
-
-  const loadData = async () => {
-    setLoading(true);
-    await Promise.all([loadExpenses(), loadIncomes(), loadGoals(), loadNotifs()]);
-    setLoading(false);
-  };
-
-  const loadExpenses = async () => {
-    const { data } = await supabase.from('expenses').select('*').order('date', { ascending: false });
-    if (data) setExpenses(data.map(e => ({ ...e, person_id: e.person_name === 'Camila' ? 'user-a' : 'user-b' })));
-  };
-
-  const loadIncomes = async () => {
-    const { data } = await supabase.from('incomes').select('*').order('date', { ascending: false });
-    if (data) setIncomes(data.map(e => ({ ...e, person_id: e.person_name === 'Camila' ? 'user-a' : 'user-b' })));
-  };
-
-  const loadGoals = async () => {
-    const { data } = await supabase.from('goals').select('*').order('created_at', { ascending: false });
-    if (data) setGoals(data);
-  };
-
-  const loadNotifs = async () => {
-    const { data } = await supabase.from('notifications').select('*').order('created_at', { ascending: false });
-    if (data) setNotifs(data);
-  };
 
   const unread = notifs.filter((n) => !n.read).length;
 
@@ -340,66 +296,81 @@ export default function CasalGrana() {
 
   const maxCat = Math.max(...byCat.map((c) => c.total), 1);
 
-  const addExpense = async (data) => {
-    const personName = members.find(m => m.id === data.person_id)?.name || data.person_id;
-    await supabase.from('expenses').insert({
-      person_name: personName,
-      description: data.description,
-      amount: data.amount,
-      category: data.category,
-      date: data.date,
-    });
-    await loadExpenses();
-    // Check imbalance
-    const aTotal = expenses.filter(e => inMonth(e) && e.person_id === 'user-a').reduce((s,e) => s+e.amount, 0) + (data.person_id === 'user-a' ? data.amount : 0);
-    const bTotal = expenses.filter(e => inMonth(e) && e.person_id === 'user-b').reduce((s,e) => s+e.amount, 0) + (data.person_id === 'user-b' ? data.amount : 0);
+  const addExpense = (data) => {
+    setExpenses((prev) => [{ id: uid(), ...data }, ...prev]);
+    const aTotal =
+      expenses
+        .filter((e) => inMonth(e) && e.person_id === 'user-a')
+        .reduce((s, e) => s + e.amount, 0) +
+      (data.person_id === 'user-a' ? data.amount : 0);
+    const bTotal =
+      expenses
+        .filter((e) => inMonth(e) && e.person_id === 'user-b')
+        .reduce((s, e) => s + e.amount, 0) +
+      (data.person_id === 'user-b' ? data.amount : 0);
     const diff = Math.abs(aTotal - bTotal);
     if (diff > 500) {
       const who = aTotal > bTotal ? 'Rogério' : 'Camila';
-      await supabase.from('notifications').insert({ type: 'imbalance', title: 'Saldo desigual', body: `${who} deve ${fmtShort(diff)} ao parceiro neste mês.`, read: false });
-      await loadNotifs();
+      setNotifs((prev) => [
+        {
+          id: uid(),
+          type: 'imbalance',
+          title: 'Saldo desigual',
+          body: `${who} deve ${fmtShort(diff)} ao parceiro neste mês.`,
+          read: false,
+          created_at: nowISO(),
+        },
+        ...prev,
+      ]);
     }
   };
 
-  const addIncome = async (data) => {
-    const personName = members.find(m => m.id === data.person_id)?.name || data.person_id;
-    await supabase.from('incomes').insert({
-      person_name: personName,
-      description: data.description,
-      amount: data.amount,
-      date: data.date,
-    });
-    await supabase.from('notifications').insert({ type: 'income_added', title: 'Ganho registrado', body: `${data.description}: ${fmt(data.amount)}`, read: false });
-    await loadIncomes();
-    await loadNotifs();
+  const addIncome = (data) => {
+    setIncomes((prev) => [{ id: uid(), ...data }, ...prev]);
+    setNotifs((prev) => [
+      {
+        id: uid(),
+        type: 'income_added',
+        title: 'Ganho registrado',
+        body: `${data.description}: ${fmt(data.amount)}`,
+        read: false,
+        created_at: nowISO(),
+      },
+      ...prev,
+    ]);
   };
 
-  const deleteExpense = async (id) => {
-    await supabase.from('expenses').delete().eq('id', id);
-    await loadExpenses();
+  const deleteExpense = (id) =>
+    setExpenses((prev) => prev.filter((e) => e.id !== id));
+
+  const addGoal = (data) =>
+    setGoals((prev) => [{ id: uid(), saved: 0, ...data }, ...prev]);
+
+  const depositGoalFn = (goalId, amount) => {
+    setGoals((prev) =>
+      prev.map((g) => {
+        if (g.id !== goalId) return g;
+        const newSaved = Math.min(g.saved + amount, g.target);
+        if (newSaved >= g.target) {
+          setNotifs((p) => [
+            {
+              id: uid(),
+              type: 'goal_complete',
+              title: `Meta concluída! ${g.emoji}`,
+              body: `"${g.name}" foi atingida!`,
+              read: false,
+              created_at: nowISO(),
+            },
+            ...p,
+          ]);
+        }
+        return { ...g, saved: newSaved };
+      })
+    );
   };
 
-  const addGoal = async (data) => {
-    await supabase.from('goals').insert({ ...data, saved: data.saved || 0 });
-    await loadGoals();
-  };
-
-  const depositGoalFn = async (goalId, amount) => {
-    const goal = goals.find(g => g.id === goalId);
-    if (!goal) return;
-    const newSaved = Math.min(goal.saved + amount, goal.target);
-    await supabase.from('goals').update({ saved: newSaved }).eq('id', goalId);
-    if (newSaved >= goal.target) {
-      await supabase.from('notifications').insert({ type: 'goal_complete', title: `Meta concluída! ${goal.emoji}`, body: `"${goal.name}" foi atingida!`, read: false });
-      await loadNotifs();
-    }
-    await loadGoals();
-  };
-
-  const markAllRead = async () => {
-    await supabase.from('notifications').update({ read: true }).eq('read', false);
-    await loadNotifs();
-  };
+  const markAllRead = () =>
+    setNotifs((prev) => prev.map((n) => ({ ...n, read: true })));
 
   const months = Array.from(
     new Set([...expenses, ...incomes].map((t) => t.date.slice(0, 7)))
@@ -418,16 +389,6 @@ export default function CasalGrana() {
     cursor: 'pointer',
     outline: 'none',
   };
-
-  if (loading) return (
-    <>
-      <style>{STYLE}</style>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--green)', flexDirection: 'column', gap: 16 }}>
-        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, color: 'var(--cream)' }}>Casal & Grana</div>
-        <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.5)' }}>Carregando seus dados...</div>
-      </div>
-    </>
-  );
 
   return (
     <>
@@ -659,8 +620,8 @@ export default function CasalGrana() {
         <ExpenseModal
           members={members}
           categories={allCategories}
-          onSave={async (d) => {
-            await addExpense(d);
+          onSave={(d) => {
+            addExpense(d);
             setModal(null);
           }}
           onClose={() => setModal(null)}
@@ -882,10 +843,7 @@ function Dashboard({
                     const cat = catOf(e.category);
                     return (
                       <tr key={e.id}>
-                        <td>
-                          {e.description}
-                          {e.tipo === 'fixo' && <span style={{ marginLeft: 6, fontSize: 10, background: '#EDE9FE', color: '#5B21B6', borderRadius: 4, padding: '1px 5px', fontWeight: 600 }}>🔁 Fixo</span>}
-                        </td>
+                        <td>{e.description}</td>
                         <td>
                           <span className="badge badge-gray">
                             {cat.emoji} {cat.label}
@@ -1772,9 +1730,6 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
     amount: '',
     category: 'alimentacao',
     date: todayStr(),
-    tipo: 'normal', // 'normal' | 'parcelado' | 'fixo'
-    parcelas: 2,
-    valorTotal: '',
   });
   const [showNewCat, setShowNewCat] = useState(false);
   const [newCat, setNewCat] = useState({ label: '', emoji: '🏷️' });
@@ -1782,35 +1737,9 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
 
   const set = (k, v) => setForm((p) => ({ ...p, [k]: v }));
 
-  const valorParcela = form.tipo === 'parcelado' && form.valorTotal && form.parcelas > 0
-    ? (parseFloat(form.valorTotal) / form.parcelas).toFixed(2)
-    : null;
-
-  const handleSave = async () => {
-    if (!form.description) return;
-    if (form.tipo === 'parcelado') {
-      if (!form.valorTotal || form.parcelas < 2) return;
-      const parcVal = parseFloat(form.valorTotal) / form.parcelas;
-      const [year, month, day] = form.date.split('-').map(Number);
-      for (let i = 0; i < form.parcelas; i++) {
-        const d = new Date(year, month - 1 + i, day);
-        const dateStr = d.toISOString().slice(0, 10);
-        await onSave({
-          person_id: form.person_id,
-          description: `${form.description} (${i+1}/${form.parcelas})`,
-          amount: parcVal,
-          category: form.category,
-          date: dateStr,
-          tipo: 'parcelado',
-        });
-      }
-    } else if (form.tipo === 'fixo') {
-      if (!form.amount) return;
-      await onSave({ ...form, amount: parseFloat(form.amount), tipo: 'fixo' });
-    } else {
-      if (!form.amount) return;
-      await onSave({ ...form, amount: parseFloat(form.amount), tipo: 'normal' });
-    }
+  const handleSave = () => {
+    if (!form.description || !form.amount) return;
+    onSave({ ...form, amount: parseFloat(form.amount) });
   };
 
   const handleAddCategory = () => {
@@ -1830,78 +1759,47 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
     >
       <div className="modal">
         <h3>💳 Novo Gasto</h3>
-
-        {/* Tipo de gasto */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-          {[
-            { id: 'normal', label: '💰 Normal', desc: 'Avulso' },
-            { id: 'parcelado', label: '📅 Parcelado', desc: 'Em parcelas' },
-            { id: 'fixo', label: '🔁 Fixo', desc: 'Todo mês' },
-          ].map(t => (
-            <button key={t.id} onClick={() => set('tipo', t.id)}
-              style={{ flex: 1, padding: '8px 4px', borderRadius: 10, border: form.tipo === t.id ? '2px solid var(--green)' : '1.5px solid var(--border)', background: form.tipo === t.id ? 'var(--green-pale)' : 'var(--white)', cursor: 'pointer', fontSize: 12, fontWeight: form.tipo === t.id ? 600 : 400, color: form.tipo === t.id ? 'var(--green)' : 'var(--text-mid)', fontFamily: "'DM Sans', sans-serif" }}>
-              <div>{t.label}</div>
-              <div style={{ fontSize: 10, opacity: 0.7, marginTop: 2 }}>{t.desc}</div>
-            </button>
-          ))}
-        </div>
-
         <div className="form-group">
           <label>Pessoa</label>
-          <select value={form.person_id} onChange={(e) => set('person_id', e.target.value)}>
+          <select
+            value={form.person_id}
+            onChange={(e) => set('person_id', e.target.value)}
+          >
             {members.map((m) => (
-              <option key={m.id} value={m.id}>{m.name}</option>
+              <option key={m.id} value={m.id}>
+                {m.name}
+              </option>
             ))}
           </select>
         </div>
         <div className="form-group">
           <label>Descrição</label>
-          <input type="text"
-            placeholder={form.tipo === 'fixo' ? 'Ex: Internet, Água, Luz...' : form.tipo === 'parcelado' ? 'Ex: Geladeira, Sofá...' : 'Ex: Supermercado'}
+          <input
+            type="text"
+            placeholder="Ex: Supermercado"
             value={form.description}
             onChange={(e) => set('description', e.target.value)}
           />
         </div>
-
-        {/* Campos condicionais por tipo */}
-        {form.tipo === 'parcelado' ? (
-          <div className="form-row">
-            <div className="form-group">
-              <label>Valor Total (R$)</label>
-              <input type="number" placeholder="0,00" min="0" step="0.01"
-                value={form.valorTotal} onChange={(e) => set('valorTotal', e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>Parcelas</label>
-              <input type="number" min="2" max="60" placeholder="Ex: 12"
-                value={form.parcelas} onChange={(e) => set('parcelas', parseInt(e.target.value) || 2)} />
-            </div>
-          </div>
-        ) : (
-          <div className="form-group">
-            <label>Valor (R$)</label>
-            <input type="number" placeholder="0,00" min="0" step="0.01"
-              value={form.amount} onChange={(e) => set('amount', e.target.value)} />
-          </div>
-        )}
-
-        {/* Preview parcela */}
-        {form.tipo === 'parcelado' && valorParcela && (
-          <div style={{ background: 'var(--green-pale)', border: '1px solid var(--green-light)', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: 'var(--green)' }}>
-            💡 <strong>{form.parcelas}x de R$ {parseFloat(valorParcela).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</strong> — serão criados {form.parcelas} lançamentos automaticamente
-          </div>
-        )}
-
-        {form.tipo === 'fixo' && (
-          <div style={{ background: '#EDE9FE', border: '1px solid #C4B5FD', borderRadius: 10, padding: '10px 14px', marginBottom: 12, fontSize: 13, color: '#5B21B6' }}>
-            🔁 Este gasto aparecerá todo mês automaticamente
-          </div>
-        )}
-
         <div className="form-row">
           <div className="form-group">
-            <label>{form.tipo === 'parcelado' ? 'Mês inicial' : 'Data'}</label>
-            <input type="date" value={form.date} onChange={(e) => set('date', e.target.value)} />
+            <label>Valor (R$)</label>
+            <input
+              type="number"
+              placeholder="0,00"
+              min="0"
+              step="0.01"
+              value={form.amount}
+              onChange={(e) => set('amount', e.target.value)}
+            />
+          </div>
+          <div className="form-group">
+            <label>Data</label>
+            <input
+              type="date"
+              value={form.date}
+              onChange={(e) => set('date', e.target.value)}
+            />
           </div>
         </div>
         <div className="form-group">
@@ -1956,7 +1854,7 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
             Cancelar
           </button>
           <button className="btn btn-primary" onClick={handleSave}>
-            {form.tipo === 'parcelado' ? `Criar ${form.parcelas} parcelas` : form.tipo === 'fixo' ? 'Salvar Gasto Fixo' : 'Salvar Gasto'}
+            Salvar Gasto
           </button>
         </div>
       </div>
