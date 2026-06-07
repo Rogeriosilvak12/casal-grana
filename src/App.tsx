@@ -231,131 +231,14 @@ const monthLabel = (ym) => {
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 const DEMO_MEMBERS = [
-  { id: 'user-a', name: 'Camila', avatar: 'A', color: '#A8D5BA' },
-  { id: 'user-b', name: 'Bruno', avatar: 'B', color: '#C9A84C' },
+  { id: 'user-a', name: 'Camila', avatar: 'C', color: '#A8D5BA' },
+  { id: 'user-b', name: 'Rogério', avatar: 'R', color: '#C9A84C' },
 ];
 
-const makeExpenses = () => [
-  {
-    id: uid(),
-    person_id: 'user-a',
-    description: 'Supermercado',
-    amount: 387,
-    category: 'alimentacao',
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-b',
-    description: 'Aluguel',
-    amount: 2100,
-    category: 'moradia',
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-a',
-    description: 'Energia Elétrica',
-    amount: 210,
-    category: 'moradia',
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-b',
-    description: 'Jantar fora',
-    amount: 163,
-    category: 'lazer',
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-a',
-    description: 'Farmácia',
-    amount: 89,
-    category: 'saude',
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-b',
-    description: 'Uber',
-    amount: 54,
-    category: 'transporte',
-    date: todayStr(),
-  },
-];
-const makeIncomes = () => [
-  {
-    id: uid(),
-    person_id: 'user-a',
-    description: 'Salário',
-    amount: 5800,
-    date: todayStr(),
-  },
-  {
-    id: uid(),
-    person_id: 'user-b',
-    description: 'Salário',
-    amount: 6200,
-    date: todayStr(),
-  },
-];
-const makeGoals = () => [
-  {
-    id: uid(),
-    emoji: '✈️',
-    name: 'Viagem — Portugal',
-    target: 12000,
-    saved: 7440,
-    deadline: '2026-12',
-    split: '50/50',
-  },
-  {
-    id: uid(),
-    emoji: '🛋️',
-    name: 'Novo sofá',
-    target: 3000,
-    saved: 2640,
-    deadline: '2026-08',
-    split: '50/50',
-  },
-  {
-    id: uid(),
-    emoji: '🏦',
-    name: 'Reserva de emergência',
-    target: 30000,
-    saved: 10200,
-    deadline: '2027-12',
-    split: '50/50',
-  },
-];
-const makeNotifs = () => [
-  {
-    id: uid(),
-    type: 'imbalance',
-    title: 'Saldo desigual',
-    body: 'Bruno deve R$ 240 para Camila neste mês.',
-    read: false,
-    created_at: nowISO(),
-  },
-  {
-    id: uid(),
-    type: 'goal_reminder',
-    title: 'Meta: Portugal',
-    body: 'Falta depositar R$ 600 para atingir o mês.',
-    read: false,
-    created_at: nowISO(),
-  },
-  {
-    id: uid(),
-    type: 'over_budget',
-    title: 'Lazer acima da média',
-    body: 'Gastos com lazer 40% acima do mês anterior.',
-    read: true,
-    created_at: nowISO(),
-  },
-];
+const makeExpenses = () => [];
+const makeIncomes = () => [];
+const makeGoals = () => [];
+const makeNotifs = () => [];
 
 export default function CasalGrana() {
   const [page, setPage] = useState('dashboard');
@@ -423,7 +306,7 @@ export default function CasalGrana() {
       (data.person_id === 'user-b' ? data.amount : 0);
     const diff = Math.abs(aTotal - bTotal);
     if (diff > 500) {
-      const who = aTotal > bTotal ? 'Bruno' : 'Camila';
+      const who = aTotal > bTotal ? 'Rogério' : 'Camila';
       setNotifs((prev) => [
         {
           id: uid(),
@@ -541,11 +424,11 @@ export default function CasalGrana() {
           <div className="sidebar-footer">
             <div className="couple-pill">
               <div className="avatars-sm">
-                <div className="av av-a">A</div>
-                <div className="av av-b">B</div>
+                <div className="av av-a">C</div>
+                <div className="av av-b">R</div>
               </div>
               <div className="couple-info">
-                <div className="couple-name">Camila & Bruno</div>
+                <div className="couple-name">Camila & Rogério</div>
                 <div className="couple-month">{monthLabel(filterMonth)}</div>
               </div>
             </div>
@@ -1532,7 +1415,7 @@ function Relatorio({
           <div
             style={{ fontSize: 13, color: 'var(--text-soft)', marginTop: 2 }}
           >
-            Camila & Bruno · Casal & GrCamila
+            Camila & Rogério · Casal & Grana
           </div>
         </div>
         <button
@@ -2102,8 +1985,8 @@ function GoalModal({ onSave, onClose }) {
               onChange={(e) => set('split', e.target.value)}
             >
               <option value="50/50">50% cada</option>
-              <option value="60/40">60% Camila / 40% Bruno</option>
-              <option value="40/60">40% Camila / 60% Bruno</option>
+              <option value="60/40">60% Camila / 40% Rogério</option>
+              <option value="40/60">40% Camila / 60% Rogério</option>
             </select>
           </div>
         </div>
