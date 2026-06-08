@@ -224,8 +224,8 @@ const fmtShort = (v) =>
   });
 const todayStr = () => new Date().toISOString().slice(0, 10);
 const nowISO = () => new Date().toISOString();
-const catOf = (id) =>
-  CATEGORIES.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
+const catOf = (id, cats = CATEGORIES) =>
+  cats.find((c) => c.id === id) || CATEGORIES[CATEGORIES.length - 1];
 const currentMonth = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -264,23 +264,32 @@ export default function CasalGrana() {
   const printRef = useRef(null);
 
   const allCategories = [...CATEGORIES, ...customCategories];
-  const addCustomCategory = (cat) => setCustomCategories((prev) => [...prev, cat]);
+
+  const addCustomCategory = async (cat) => {
+    await supabase.from('custom_categories').insert({ id: cat.id, label: cat.label, emoji: cat.emoji, color: cat.color });
+    await loadCustomCategories();
+  };
 
   // Load data from Supabase
   useEffect(() => {
     loadData();
-    // Realtime subscriptions
     const expSub = supabase.channel('expenses').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => loadExpenses()).subscribe();
     const incSub = supabase.channel('incomes').on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, () => loadIncomes()).subscribe();
     const goalSub = supabase.channel('goals').on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, () => loadGoals()).subscribe();
     const notifSub = supabase.channel('notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => loadNotifs()).subscribe();
-    return () => { expSub.unsubscribe(); incSub.unsubscribe(); goalSub.unsubscribe(); notifSub.unsubscribe(); };
+    const catSub = supabase.channel('custom_categories').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_categories' }, () => loadCustomCategories()).subscribe();
+    return () => { expSub.unsubscribe(); incSub.unsubscribe(); goalSub.unsubscribe(); notifSub.unsubscribe(); catSub.unsubscribe(); };
   }, []);
 
   const loadData = async () => {
     setLoading(true);
-    await Promise.all([loadExpenses(), loadIncomes(), loadGoals(), loadNotifs()]);
+    await Promise.all([loadExpenses(), loadIncomes(), loadGoals(), loadNotifs(), loadCustomCategories()]);
     setLoading(false);
+  };
+
+  const loadCustomCategories = async () => {
+    const { data } = await supabase.from('custom_categories').select('*').order('created_at');
+    if (data) setCustomCategories(data);
   };
 
   const loadExpenses = async () => {
@@ -348,6 +357,10 @@ export default function CasalGrana() {
       amount: data.amount,
       category: data.category,
       date: data.date,
+      tipo: data.tipo || 'normal',
+      installment_group: data.installment_group || null,
+      installment_total: data.installment_total || 1,
+      installment_current: data.installment_current || 1,
     });
     await loadExpenses();
     // Check imbalance
@@ -374,8 +387,25 @@ export default function CasalGrana() {
     await loadNotifs();
   };
 
-  const deleteExpense = async (id) => {
-    await supabase.from('expenses').delete().eq('id', id);
+  const deleteExpense = async (id, deleteGroup = false) => {
+    const exp = expenses.find(e => e.id === id);
+    if (deleteGroup && exp?.installment_group) {
+      await supabase.from('expenses').delete().eq('installment_group', exp.installment_group);
+    } else {
+      await supabase.from('expenses').delete().eq('id', id);
+    }
+    await loadExpenses();
+  };
+
+  const editExpense = async (id, data) => {
+    const personName = members.find(m => m.id === data.person_id)?.name || data.person_id;
+    await supabase.from('expenses').update({
+      person_name: personName,
+      description: data.description,
+      amount: data.amount,
+      category: data.category,
+      date: data.date,
+    }).eq('id', id);
     await loadExpenses();
   };
 
@@ -611,9 +641,11 @@ export default function CasalGrana() {
                 setViewMode={setViewMode}
                 byPerson={byPerson}
                 onDelete={deleteExpense}
+                onEdit={editExpense}
                 onAdd={() => setModal('expense')}
                 inMonth={inMonth}
                 allExpenses={expenses}
+                allCategories={allCategories}
               />
             )}
             {page === 'ganhos' && (
@@ -916,7 +948,7 @@ function Dashboard({
                 </thead>
                 <tbody>
                   {expenses.slice(0, 6).map((e) => {
-                    const cat = catOf(e.category);
+                    const cat = catOf(e.category, cats.length ? cats : undefined);
                     return (
                       <tr key={e.id}>
                         <td>
@@ -1018,10 +1050,24 @@ function Lancamentos({
   setViewMode,
   byPerson,
   onDelete,
+  onEdit,
   onAdd,
   inMonth,
   allExpenses,
+  allCategories = [],
 }) {
+  const [editingExp, setEditingExp] = useState(null);
+  const [editExpForm, setEditExpForm] = useState({});
+  const cats = allCategories.length > 0 ? allCategories : [];
+
+  const startEditExp = (e) => {
+    setEditingExp(e.id);
+    setEditExpForm({ description: e.description, amount: e.amount, category: e.category, date: e.date, person_id: e.person_id });
+  };
+  const saveEditExp = async () => {
+    await onEdit(editingExp, editExpForm);
+    setEditingExp(null);
+  };
   const selStyle = {
     padding: '7px 14px',
     borderRadius: 50,
@@ -1153,7 +1199,7 @@ function Lancamentos({
               style={selStyle}
             >
               <option value="todas">Todas categorias</option>
-              {CATEGORIES.map((c) => (
+              {cats.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.emoji} {c.label}
                 </option>
@@ -1188,7 +1234,7 @@ function Lancamentos({
                   </tr>
                 ) : (
                   expenses.map((e) => {
-                    const cat = catOf(e.category);
+                    const cat = catOf(e.category, cats.length ? cats : undefined);
                     const m = members.find((x) => x.id === e.person_id);
                     return (
                       <tr key={e.id}>
@@ -1232,14 +1278,47 @@ function Lancamentos({
                             {m?.name}
                           </span>
                         </td>
-                        <td className="amount-neg">{fmt(e.amount)}</td>
+                        <td className="amount-neg">
+                          {editingExp === e.id
+                            ? <input type="number" value={editExpForm.amount} onChange={ev => setEditExpForm(p=>({...p, amount: ev.target.value}))} style={{ width: 100, padding: '4px 8px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 13 }} />
+                            : fmt(e.amount)
+                          }
+                        </td>
                         <td className="no-print">
-                          <button
-                            className="btn btn-danger btn-sm"
-                            onClick={() => onDelete(e.id)}
-                          >
-                            ✕
-                          </button>
+                          {editingExp === e.id ? (
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button className="btn btn-primary btn-sm" style={{ padding: '4px 8px', fontSize: 12 }} onClick={saveEditExp}>✓</button>
+                              <button className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => setEditingExp(null)}>✕</button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button className="btn btn-secondary btn-sm" style={{ padding: '4px 8px', fontSize: 12 }} onClick={() => startEditExp(e)}>✏️</button>
+                              <button
+                                className="btn btn-danger btn-sm"
+                                onClick={() => {
+                                  if (e.installment_group) {
+                                    const choice = window.confirm(
+                                      e.installment_total > 1
+                                        ? `Excluir só esta parcela ou TODAS as ${e.installment_total} parcelas?
+
+OK = Excluir TODAS
+Cancelar = Só esta`
+                                        : 'Excluir este gasto?'
+                                    );
+                                    if (e.installment_total > 1) {
+                                      onDelete(e.id, choice);
+                                    } else if (choice) {
+                                      onDelete(e.id, false);
+                                    }
+                                  } else {
+                                    if (window.confirm('Excluir este gasto?')) onDelete(e.id, false);
+                                  }
+                                }}
+                              >
+                                🗑
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -1930,6 +2009,7 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
       if (!form.valorTotal || form.parcelas < 2) return;
       const parcVal = parseFloat(form.valorTotal) / form.parcelas;
       const [year, month, day] = form.date.split('-').map(Number);
+      const groupId = 'grp_' + Date.now();
       for (let i = 0; i < form.parcelas; i++) {
         const d = new Date(year, month - 1 + i, day);
         const dateStr = d.toISOString().slice(0, 10);
@@ -1940,6 +2020,9 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
           category: form.category,
           date: dateStr,
           tipo: 'parcelado',
+          installment_group: groupId,
+          installment_total: form.parcelas,
+          installment_current: i + 1,
         });
       }
     } else if (form.tipo === 'fixo') {
@@ -1953,7 +2036,7 @@ function ExpenseModal({ members, categories, onSave, onClose, onAddCategory }) {
 
   const handleAddCategory = () => {
     if (!newCat.label.trim()) return;
-    const id = newCat.label.toLowerCase().replace(/\s+/g, '_') + '_' + Date.now();
+    const id = 'cat_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
     const cat = { id, label: newCat.label.trim(), emoji: newCat.emoji, color: '#8A9E94' };
     onAddCategory(cat);
     set('category', id);
