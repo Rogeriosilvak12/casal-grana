@@ -627,6 +627,7 @@ export default function CasalGrana() {
                 goals={goals}
                 expenses={expenses.filter(inMonth)}
                 members={members}
+                allCategories={allCategories}
               />
             )}
             {page === 'lancamentos' && (
@@ -783,6 +784,7 @@ function Dashboard({
   goals,
   expenses,
   members,
+  allCategories = [],
 }) {
   return (
     <>
