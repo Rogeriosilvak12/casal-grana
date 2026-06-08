@@ -948,7 +948,7 @@ function Dashboard({
                 </thead>
                 <tbody>
                   {expenses.slice(0, 6).map((e) => {
-                    const cat = catOf(e.category, cats.length ? cats : undefined);
+                    const cat = catOf(e.category, allCategories.length ? allCategories : undefined);
                     return (
                       <tr key={e.id}>
                         <td>
@@ -1234,7 +1234,7 @@ function Lancamentos({
                   </tr>
                 ) : (
                   expenses.map((e) => {
-                    const cat = catOf(e.category, cats.length ? cats : undefined);
+                    const cat = catOf(e.category, allCategories.length ? allCategories : undefined);
                     const m = members.find((x) => x.id === e.person_id);
                     return (
                       <tr key={e.id}>
