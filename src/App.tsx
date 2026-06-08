@@ -682,6 +682,7 @@ export default function CasalGrana() {
                 balance={balance}
                 byPerson={byPerson}
                 filterMonth={filterMonth}
+                allCategories={allCategories}
               />
             )}
             {page === 'notificacoes' && (
@@ -1152,7 +1153,7 @@ function Lancamentos({
                           <td>{e.description}</td>
                           <td>
                             <span className="badge badge-gray">
-                              {catOf(e.category).emoji}
+                              {catOf(e.category, allCategories.length ? allCategories : undefined).emoji}
                             </span>
                           </td>
                           <td className="amount-neg">{fmtShort(e.amount)}</td>
@@ -1279,6 +1280,14 @@ function Lancamentos({
                             </span>
                             {m?.name}
                           </span>
+                        </td>
+                        <td>
+                          {editingExp === e.id
+                            ? <select value={editExpForm.category} onChange={ev => setEditExpForm(p=>({...p, category: ev.target.value}))} style={{ padding: '4px 8px', borderRadius: 6, border: '1.5px solid var(--border)', fontSize: 12, maxWidth: 140 }}>
+                                {cats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                              </select>
+                            : <span className="badge badge-gray">{catOf(e.category, cats.length ? cats : undefined).emoji} {catOf(e.category, cats.length ? cats : undefined).label}</span>
+                          }
                         </td>
                         <td className="amount-neg">
                           {editingExp === e.id
@@ -1657,6 +1666,7 @@ function Relatorio({
   balance,
   byPerson,
   filterMonth,
+  allCategories = [],
 }) {
   return (
     <>
@@ -1801,7 +1811,7 @@ function Relatorio({
                 {expenses
                   .sort((a, b) => b.date.localeCompare(a.date))
                   .map((e) => {
-                    const cat = catOf(e.category);
+                    const cat = catOf(e.category, allCategories.length ? allCategories : undefined);
                     const m = members.find((x) => x.id === e.person_id);
                     return (
                       <tr key={e.id}>
