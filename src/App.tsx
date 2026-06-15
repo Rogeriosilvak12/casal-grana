@@ -261,6 +261,8 @@ export default function CasalGrana() {
   const [depositGoal, setDepositGoal] = useState(null);
   const [customCategories, setCustomCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [session, setSession] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   const printRef = useRef(null);
 
   const allCategories = [...CATEGORIES, ...customCategories];
@@ -270,8 +272,21 @@ export default function CasalGrana() {
     await loadCustomCategories();
   };
 
-  // Load data from Supabase
+  // Check auth session
   useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setAuthLoading(false);
+    });
+    const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+    return () => authListener.subscription.unsubscribe();
+  }, []);
+
+  // Load data from Supabase (only when logged in)
+  useEffect(() => {
+    if (!session) return;
     loadData();
     const expSub = supabase.channel('expenses').on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => loadExpenses()).subscribe();
     const incSub = supabase.channel('incomes').on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, () => loadIncomes()).subscribe();
@@ -279,7 +294,7 @@ export default function CasalGrana() {
     const notifSub = supabase.channel('notifications').on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, () => loadNotifs()).subscribe();
     const catSub = supabase.channel('custom_categories').on('postgres_changes', { event: '*', schema: 'public', table: 'custom_categories' }, () => loadCustomCategories()).subscribe();
     return () => { expSub.unsubscribe(); incSub.unsubscribe(); goalSub.unsubscribe(); notifSub.unsubscribe(); catSub.unsubscribe(); };
-  }, []);
+  }, [session]);
 
   const loadData = async () => {
     setLoading(true);
@@ -482,6 +497,22 @@ export default function CasalGrana() {
     outline: 'none',
   };
 
+  if (authLoading) return (
+    <>
+      <style>{STYLE}</style>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--green)', flexDirection: 'column', gap: 16 }}>
+        <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 32, color: 'var(--cream)' }}>Casal & Grana</div>
+      </div>
+    </>
+  );
+
+  if (!session) return (
+    <>
+      <style>{STYLE}</style>
+      <LoginScreen />
+    </>
+  );
+
   if (loading) return (
     <>
       <style>{STYLE}</style>
@@ -537,6 +568,15 @@ export default function CasalGrana() {
                 <div className="couple-name">Camila & Rogério</div>
                 <div className="couple-month">{monthLabel(filterMonth)}</div>
               </div>
+            </div>
+            <div style={{ marginTop: 10, fontSize: 11, color: 'rgba(255,255,255,0.5)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 130 }}>{session?.user?.email}</span>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', fontSize: 11, padding: '2px 6px', textDecoration: 'underline' }}
+              >
+                Sair
+              </button>
             </div>
           </div>
         </aside>
@@ -2451,6 +2491,95 @@ function DepositModal({ goal, onSave, onClose }) {
           <button className="btn btn-primary" onClick={handleSave}>
             Depositar
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LoginScreen() {
+  const [mode, setMode] = useState('login'); // 'login' | 'signup'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [msg, setMsg] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setMsg('');
+    setBusy(true);
+    if (mode === 'login') {
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) setError(error.message === 'Invalid login credentials' ? 'E-mail ou senha incorretos.' : error.message);
+    } else {
+      const { error } = await supabase.auth.signUp({ email, password });
+      if (error) {
+        setError(error.message);
+      } else {
+        setMsg('Conta criada! Verifique seu e-mail para confirmar (se necessário) e depois faça login.');
+        setMode('login');
+      }
+    }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: 'var(--green)', padding: 20 }}>
+      <div style={{ background: 'var(--cream)', borderRadius: 20, padding: '40px 32px', maxWidth: 380, width: '100%', boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}>
+        <div style={{ textAlign: 'center', marginBottom: 28 }}>
+          <div style={{ fontFamily: "'Playfair Display', serif", fontSize: 28, fontWeight: 700, color: 'var(--green)', lineHeight: 1.2 }}>
+            Casal & Grana
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--text-soft)', marginTop: 4, letterSpacing: '0.05em' }}>
+            FINANÇAS A DOIS
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 20, background: 'var(--cream-dark)', borderRadius: 10, padding: 4 }}>
+          <button
+            onClick={() => { setMode('login'); setError(''); setMsg(''); }}
+            style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', background: mode === 'login' ? 'var(--white)' : 'transparent', fontWeight: mode === 'login' ? 600 : 400, color: mode === 'login' ? 'var(--green)' : 'var(--text-mid)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 14 }}
+          >
+            Entrar
+          </button>
+          <button
+            onClick={() => { setMode('signup'); setError(''); setMsg(''); }}
+            style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', background: mode === 'signup' ? 'var(--white)' : 'transparent', fontWeight: mode === 'signup' ? 600 : 400, color: mode === 'signup' ? 'var(--green)' : 'var(--text-mid)', cursor: 'pointer', fontFamily: "'DM Sans', sans-serif", fontSize: 14 }}
+          >
+            Criar conta
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-group">
+            <label>E-mail</label>
+            <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="seu@email.com" />
+          </div>
+          <div className="form-group">
+            <label>Senha</label>
+            <input type="password" required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="mínimo 6 caracteres" />
+          </div>
+
+          {error && (
+            <div style={{ background: '#FDE8E8', color: '#C0392B', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
+              ⚠️ {error}
+            </div>
+          )}
+          {msg && (
+            <div style={{ background: 'var(--green-pale)', color: 'var(--green)', borderRadius: 10, padding: '10px 14px', fontSize: 13, marginBottom: 12 }}>
+              ✓ {msg}
+            </div>
+          )}
+
+          <button type="submit" className="btn btn-primary" disabled={busy} style={{ width: '100%', justifyContent: 'center', marginTop: 4 }}>
+            {busy ? 'Aguarde...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+          </button>
+        </form>
+
+        <div style={{ textAlign: 'center', marginTop: 20, fontSize: 12, color: 'var(--text-soft)' }}>
+          {mode === 'login' ? 'Use a conta criada por você ou seu par.' : 'Depois de criar, compartilhe o login com seu par.'}
         </div>
       </div>
     </div>
